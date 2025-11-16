@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def _persist_preprocessor(artifacts: PreprocessorArtifacts, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifacts, path)
 
 
