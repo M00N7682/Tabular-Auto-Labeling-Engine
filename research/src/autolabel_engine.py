@@ -30,6 +30,7 @@ def train_base_classifier(
         learning_rate=config.learning_rate,
         max_depth=config.max_depth,
         max_iter=config.n_estimators,
+        random_state=config.random_state,
     )
     model.fit(X_labeled, y_labeled)
     return model

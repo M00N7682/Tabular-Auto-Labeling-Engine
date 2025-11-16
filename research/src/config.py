@@ -19,7 +19,7 @@ class TabDDPMConfig:
     learning_rate: float = 1e-3
     noise_steps: int = 1000
     embedding_dim: int = 128
-    device: str = "cuda"
+    device: str = "cpu"
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,7 @@ class ClassifierConfig:
     n_estimators: int = 200
     subsample: float = 0.9
     colsample_bytree: float = 0.9
+    random_state: int = 42
 
 
 @dataclass(frozen=True)
