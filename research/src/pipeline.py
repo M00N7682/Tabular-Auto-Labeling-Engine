@@ -107,16 +107,12 @@ def run_full_pipeline(config: PipelineConfig = CONFIG) -> Dict[str, float]:
     artifacts = fit_preprocessor(df_labeled[feature_cols])
     _persist_preprocessor(artifacts, config.preprocessor_path)
 
-    X_labeled = _prepare_features(artifacts, df_labeled, feature_cols)
-    y_labeled = df_labeled[target_col].to_numpy()
-
-    tabddpm_model = train_tabddpm(X_labeled, y_labeled, config.tabddpm)
-    save_tabddpm(tabddpm_model, config.tabddpm_checkpoint_dir / "tabddpm_model.json")
+    tabddpm_model = train_tabddpm(df_labeled, target_col, config.tabddpm)
+    save_tabddpm(tabddpm_model, config.tabddpm_checkpoint_dir)
 
     classes = sorted(df_labeled[target_col].unique())
     df_synth = generate_synthetic_data(
         tabddpm_model,
-        artifacts,
         config.synthetic_samples_per_class,
         classes,
         config.synthetic_output_path,

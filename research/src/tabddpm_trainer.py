@@ -1,84 +1,104 @@
-"""Placeholder TabDDPM trainer module to be replaced with a real implementation."""
+"""TabDDPM trainer module backed by SDV's diffusion synthesizer."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
-
-import numpy as np
+from typing import Dict
+ 
+import pandas as pd
+from sdv.metadata import SingleTableMetadata
+from sdv.single_table import TableDiffusionSynthesizer
 
 from src.config import TabDDPMConfig
 
 
 @dataclass(slots=True)
 class TabDDPMModel:
+    synthesizer: TableDiffusionSynthesizer
+    metadata: SingleTableMetadata
+    target_col: str
     config: TabDDPMConfig
-    num_features: int
-    training_embeddings: np.ndarray = field(repr=False)
-    labels: np.ndarray = field(repr=False)
 
-    def sample(
-        self,
-        num_samples: int,
-        class_condition: Optional[np.ndarray] = None,
-    ) -> np.ndarray:
-        """Draw bootstrap samples from stored embeddings to mimic class conditioning."""
+    def sample_class(self, cls: object, num_samples: int) -> pd.DataFrame:
+        """Sample rows conditioned on the target class."""
 
-        rng = np.random.default_rng(self.config.embedding_dim)
-
-        if class_condition is None:
-            indices = rng.choice(self.training_embeddings.shape[0], size=num_samples, replace=True)
-            return self.training_embeddings[indices]
-
-        conditions = np.atleast_1d(class_condition)
-        # Assuming binary target; generalised to unique labels present in training data.
-        selected_rows = []
-        for cls in conditions:
-            mask = self.labels == cls
-            available = np.where(mask)[0]
-            if available.size == 0:
-                raise ValueError(f"No samples available for class {cls!r} in training data")
-            indices = rng.choice(available, size=num_samples, replace=True)
-            selected_rows.append(self.training_embeddings[indices])
-        return np.vstack(selected_rows)
+        conditions = pd.DataFrame({self.target_col: [cls] * num_samples})
+        try:
+            generated = self.synthesizer.sample_remaining_columns(conditions=conditions)
+        except AttributeError as exc:
+            try:
+                generated = self.synthesizer.sample_conditions(conditions)
+            except AttributeError as second_exc:
+                raise RuntimeError("Current SDV version lacks conditional sampling support") from second_exc
+        generated[self.target_col] = conditions[self.target_col].to_numpy()
+        return generated
 
 
 def train_tabddpm(
-    X: np.ndarray,
-    y: np.ndarray,
+    df_labeled: pd.DataFrame,
+    target_col: str,
     config: TabDDPMConfig,
 ) -> TabDDPMModel:
-    """Train the TabDDPM placeholder and return a lightweight model object."""
+    """Train an SDV diffusion synthesizer on the labeled dataset."""
 
-    # TODO: integrate real TabDDPM training implementation.
+    metadata = SingleTableMetadata()
+    metadata.detect_from_dataframe(df=df_labeled)
+
+    synthesizer = TableDiffusionSynthesizer(
+        metadata,
+        enforce_min_max_values=True,
+        enforce_rounding=True,
+        epochs=config.epochs,
+        batch_size=config.batch_size,
+    )
+    synthesizer.fit(df_labeled)
+
     return TabDDPMModel(
+        synthesizer=synthesizer,
+        metadata=metadata,
+        target_col=target_col,
         config=config,
-        num_features=X.shape[1],
-        training_embeddings=X,
-        labels=y,
     )
 
 
-def save_tabddpm(model: TabDDPMModel, path: Path) -> None:
-    """Persist the placeholder model configuration and metadata."""
+def save_tabddpm(model: TabDDPMModel, directory: Path) -> None:
+    """Persist the trained synthesizer, metadata, and config."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload: Dict[str, object] = {
-        "num_features": model.num_features,
+    directory.mkdir(parents=True, exist_ok=True)
+    model_path = directory / "tabddpm_model.pkl"
+    metadata_path = directory / "metadata.json"
+    manifest_path = directory / "manifest.json"
+
+    model.synthesizer.save(str(model_path))
+    model.metadata.to_json(filepath=str(metadata_path))
+
+    manifest: Dict[str, object] = {
+        "target_col": model.target_col,
         "config": model.config.__dict__,
     }
-    path.write_text(json.dumps(payload, indent=2))
+    manifest_path.write_text(json.dumps(manifest, indent=2))
 
 
-def load_tabddpm(path: Path, config: TabDDPMConfig) -> TabDDPMModel:
-    """Load a placeholder TabDDPM model from disk."""
+def load_tabddpm(directory: Path, config: TabDDPMConfig) -> TabDDPMModel:
+    """Load a diffusion synthesizer and associated metadata from disk."""
 
-    data = json.loads(path.read_text())
+    model_path = directory / "tabddpm_model.pkl"
+    metadata_path = directory / "metadata.json"
+    manifest_path = directory / "manifest.json"
+
+    if not model_path.exists() or not metadata_path.exists() or not manifest_path.exists():
+        msg = f"Incomplete TabDDPM checkpoint in {directory}" 
+        raise FileNotFoundError(msg)
+
+    metadata = SingleTableMetadata.load_from_json(filepath=str(metadata_path))
+    synthesizer = TableDiffusionSynthesizer.load(str(model_path))
+    manifest = json.loads(manifest_path.read_text())
+
     return TabDDPMModel(
         config=config,
-        num_features=data["num_features"],
-        training_embeddings=np.empty((0, data["num_features"])),
-        labels=np.empty(0),
+        synthesizer=synthesizer,
+        metadata=metadata,
+        target_col=manifest["target_col"],
     )
