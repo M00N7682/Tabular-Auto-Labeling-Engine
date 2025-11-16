@@ -88,7 +88,27 @@ def transform(artifacts: PreprocessorArtifacts, df: pd.DataFrame) -> np.ndarray:
     return artifacts.transformer.transform(df)
 
 
-def inverse_transform(artifacts: PreprocessorArtifacts, array: np.ndarray) -> np.ndarray:
-    """Best-effort inverse transformation of preprocessed features."""
+def inverse_transform(artifacts: PreprocessorArtifacts, array: np.ndarray) -> pd.DataFrame:
+    """Reconstruct original feature space from transformed arrays."""
 
-    return artifacts.transformer.inverse_transform(array)
+    data: dict[str, np.ndarray] = {}
+    offset = 0
+
+    if artifacts.numeric_columns:
+        numeric_part = array[:, offset : offset + len(artifacts.numeric_columns)]
+        scaler: StandardScaler = artifacts.transformer.named_transformers_["numeric"]
+        numeric_original = scaler.inverse_transform(numeric_part)
+        for idx, column in enumerate(artifacts.numeric_columns):
+            data[column] = numeric_original[:, idx]
+        offset += len(artifacts.numeric_columns)
+
+    if artifacts.categorical_columns:
+        cat_part = array[:, offset:]
+        encoder: OneHotEncoder = artifacts.transformer.named_transformers_["categorical"]
+        categorical_original = encoder.inverse_transform(cat_part)
+        for idx, column in enumerate(artifacts.categorical_columns):
+            data[column] = categorical_original[:, idx]
+
+    ordered_columns = [col for col in artifacts.original_columns if col in data]
+    reconstructed = pd.DataFrame({col: data[col] for col in ordered_columns})
+    return reconstructed

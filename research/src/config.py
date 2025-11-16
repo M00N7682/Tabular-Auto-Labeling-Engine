@@ -51,6 +51,7 @@ class PipelineConfig:
     confidence_threshold: float = 0.9
     min_labeled_per_class: int = 50
     synthetic_samples_per_class: int = 200
+    simulate_unlabeled_ratio: float = 0.7
     tabddpm: TabDDPMConfig = field(default_factory=TabDDPMConfig)
     classifier: ClassifierConfig = field(default_factory=ClassifierConfig)
 

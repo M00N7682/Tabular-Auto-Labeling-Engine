@@ -26,7 +26,7 @@ def generate_synthetic_data(
     for cls in classes:
         encoded = model.sample(num_samples=n_per_class, class_condition=np.array([cls]))
         decoded = inverse_transform(artifacts, encoded)
-        df_cls = pd.DataFrame(decoded, columns=artifacts.original_columns)
+        df_cls = decoded.copy()
         df_cls["Conversion"] = cls
         frames.append(df_cls)
 
